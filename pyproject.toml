@@ -1,0 +1,17 @@
+[project]
+name = "bids2afniqcjson"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Patrick Sadil", email = "psadil@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.scripts]
+bids2afniqcjson = "bids2afniqcjson:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
