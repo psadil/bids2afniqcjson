@@ -5,7 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 authors = [
     { name = "Patrick Sadil", email = "psadil@gmail.com" },
-    { name = "Json Kai", email = "jason.kai@childmind.org" },
+    { name = "Jason Kai", email = "jason.kai@childmind.org" },
 ]
 requires-python = ">=3.12"
 dependencies = []
