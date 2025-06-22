@@ -8,7 +8,10 @@ authors = [
     { name = "Jason Kai", email = "jason.kai@childmind.org" },
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "bids2table[s3]>=2.1.0",
+    "polars>=1.31.0",
+]
 
 [project.scripts]
 bids2afniqcjson = "bids2afniqcjson:main"
