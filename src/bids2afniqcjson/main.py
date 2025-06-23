@@ -1,3 +1,4 @@
+from argparse import ArgumentParser
 from functools import partial
 from typing import overload
 
@@ -121,3 +122,23 @@ def create_afni_json(unique_table: pl.DataFrame, out_dir: PathT) -> dict[str, st
 
 
 if __name__ == "__main__":
+    # Command-line
+    parser = ArgumentParser(
+        prog="bids2afniqcjson",
+        usage="bids2afniqc bids_dir [options]",
+        description="Convert bids dataset for json for AFNI qc",
+    )
+    parser.add_argument(
+        "bids_dir", action="store", type=str, help="Path to BIDS dataset."
+    )
+    parser.add_argument(
+        "--include",
+        default=None,
+        type=str,
+        nargs="*",
+        help="Space separated list of subject(s) to process",
+    )
+    args = parser.parse_args()
+
+    # Main processing
+    table = load_dataset(ds_path=args.bids_dir, subjects=args.include)
