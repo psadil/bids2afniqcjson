@@ -1,11 +1,9 @@
 import argparse
 from pathlib import Path
 import tempfile
-import json
 from functools import partial
 from typing import overload
-import tempfile
-import json
+import logging
 
 import bids2table as b2t
 import polars as pl
@@ -13,6 +11,13 @@ import pyarrow as pa
 from bids2table._pathlib import PathT, as_path
 from templateflow import api as tflow
 from niwrap_afni import afni
+
+from bids2afniqcjson import models
+
+
+logging.basicConfig(
+    format="%(asctime)s | %(levelname)-8s | %(message)s", level=logging.INFO
+)
 
 
 @overload
@@ -80,7 +85,7 @@ def _get_fpath(table: pl.DataFrame) -> str:
 
 def create_afni_json(
     unique_table: pl.DataFrame, out_dir: PathT
-) -> dict[str, str]:
+) -> models.UVARS:
     """Query a unique table (e.g. sub, ses, run, etc.) for specific files."""
 
     def _create_ss_review_dset(repetitions: int, out_dir: PathT) -> str:
@@ -133,7 +138,7 @@ def create_afni_json(
         ),
     }
 
-    return afni_json
+    return models.UVARS(**afni_json)
 
 
 def create_figures(df: pl.DataFrame, dst: Path):
@@ -141,27 +146,32 @@ def create_figures(df: pl.DataFrame, dst: Path):
         with tempfile.NamedTemporaryFile(suffix=".json", dir=tmpd) as uvars_f:
             uvars_path = Path(uvars_f.name)
             uvars = create_afni_json(df, Path(tmpd))
-            uvars_path.write_text(json.dumps(uvars))
+
+            uvars_path.write_text(uvars.model_dump_json(exclude_none=True))
             with tempfile.TemporaryDirectory() as sub_dir:
                 afni.apqc_make_tcsh_py(
-                    uvar_json=uvars_path,
+                    uvar_json=str(uvars_path),
                     review_style="pythonic",
                     subj_dir=sub_dir,
                 )
+                figures_dir = dst / uvars.figures_dir
+                if not figures_dir.exists():
+                    figures_dir.mkdir(parents=True)
                 for jpg in Path(sub_dir).rglob("*jpg"):
-                    jpg.rename(dst / jpg.name)
+                    jpg.rename(figures_dir / jpg.name)
 
 
-def main(
+def _main(
     bids_dir: PathT,
     out_dir: Path,
-    participant_label: str | list[str] | None = None,
+    include: str | list[str] | None = None,
 ) -> None:
-    df = load_dataset(bids_dir, subjects=participant_label)
-    create_figures(df, dst=out_dir)
+    table = load_dataset(ds_path=bids_dir, subjects=include)
+    create_figures(table, dst=out_dir)
 
 
-if __name__ == "__main__":
+def main() -> None:
+
     # Command-line
     parser = argparse.ArgumentParser(
         prog="bids2afniqcjson",
@@ -172,24 +182,19 @@ if __name__ == "__main__":
         "bids_dir", action="store", type=str, help="Path to BIDS dataset."
     )
     parser.add_argument(
+        "out_dir", action="store", type=str, help="Path to BIDS dataset."
+    )
+    parser.add_argument(
         "--include",
         default=None,
         type=str,
         nargs="*",
         help="Space separated list of subject(s) to process",
     )
-    args = parser.parse_args()
-
-    # Main processing
-    table = load_dataset(ds_path=args.bids_dir, subjects=args.include)
-    parser = argparse.ArgumentParser()
-    parser.add_argument("bids_dir", type=Path)
-    parser.add_argument("out_dir", type=Path)
-    parser.add_argument("--participant-label", nargs="+")
 
     args = parser.parse_args()
-    main(
-        args.bids_dir,
-        out_dir=args.out_dir,
-        participant_label=args.participant_label,
-    )
+    _main(args.bids_dir, out_dir=args.out_dir, include=args.include)
+
+
+if __name__ == "__main__":
+    main()
