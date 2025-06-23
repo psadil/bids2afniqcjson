@@ -7,15 +7,18 @@ authors = [
     { name = "Patrick Sadil", email = "psadil@gmail.com" },
     { name = "Jason Kai", email = "jason.kai@childmind.org" },
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 dependencies = [
     "bids2table[s3]>=2.1.0",
+    "matplotlib>=3.10.3",
+    "niwrap-afni>=0.6.1",
     "polars>=1.31.0",
+    "pydantic>=2.11.7",
     "templateflow>=24.2.2",
 ]
 
 [project.scripts]
-bids2afniqcjson = "bids2afniqcjson:main"
+bids2afniqcjson = "bids2afniqcjson:main.main"
 
 [build-system]
 requires = ["hatchling"]
