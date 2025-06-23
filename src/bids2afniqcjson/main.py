@@ -1,3 +1,4 @@
+import itertools as it
 from argparse import ArgumentParser
 from functools import partial
 from typing import overload
@@ -69,8 +70,13 @@ def _get_fpath(table: pl.DataFrame) -> str:
     return str(as_path("/".join(table.select(["root", "path"]).row(0))).resolve())
 
 
-def create_afni_json(unique_table: pl.DataFrame, out_dir: PathT) -> dict[str, str]:
-    """Query a unique table (e.g. sub, ses, run, etc.) for specific files."""
+def create_afni_json(
+    table: pl.DataFrame, subject: str, out_dir: PathT
+) -> dict[str, str]:
+    """Query a unique table (e.g. sub, ses, run, etc.) for specific files.
+
+    NOTE: Need to fix out_dir to set to proper path.
+    """
 
     def _create_ss_review_dset(repetitions: int, out_dir: PathT) -> str:
         """Create out.ss_review.FT.txt with the number of TRs per run as needed."""
@@ -78,8 +84,8 @@ def create_afni_json(unique_table: pl.DataFrame, out_dir: PathT) -> dict[str, st
         out_fpath.write_text(f"num_TRs_per_run: {repetitions}")
         return str(out_fpath)
 
-    subject_query = partial(_query_dataset, unique_table)
-    subject = unique_table.select("sub")[0].item()
+    subject_table = table.filter(pl.col("sub") == subject)
+    subject_query = partial(_query_dataset, subject_table)
 
     # Create base JSON file
     # NOTE_1: Need to rethink querying to be more flexible (e.g. space, run, etc.)
@@ -142,3 +148,10 @@ if __name__ == "__main__":
 
     # Main processing
     table = load_dataset(ds_path=args.bids_dir, subjects=args.include)
+
+    for subject in table["sub"].unique().sort().to_list():
+        afni_json = create_afni_json(
+            table=table, subject=subject, out_dir=as_path(args.bids_dir)
+        )
+
+        # NIWRAP STUFF WOULD GO HERE
