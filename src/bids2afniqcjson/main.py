@@ -1,3 +1,7 @@
+import argparse
+from pathlib import Path
+import tempfile
+import json
 from functools import partial
 from typing import overload
 
@@ -6,6 +10,7 @@ import polars as pl
 import pyarrow as pa
 from bids2table._pathlib import PathT, as_path
 from templateflow import api as tflow
+from niwrap_afni import afni
 
 
 @overload
@@ -39,7 +44,8 @@ def load_dataset(
     # Flatten extra entities and drop column
     extra_entities = table["extra_entities"].to_pylist()
     extra_entities_dicts = [
-        dict(pairs) if isinstance(pairs, list) else {} for pairs in extra_entities
+        dict(pairs) if isinstance(pairs, list) else {}
+        for pairs in extra_entities
     ]
     all_keys = set().union(*(d.keys() for d in extra_entities_dicts))
 
@@ -65,10 +71,14 @@ def _query_dataset(table: pl.DataFrame, query: str) -> pl.DataFrame:
 
 def _get_fpath(table: pl.DataFrame) -> str:
     """Grab absolute file path of file."""
-    return str(as_path("/".join(table.select(["root", "path"]).row(0))).resolve())
+    return str(
+        as_path("/".join(table.select(["root", "path"]).row(0))).resolve()
+    )
 
 
-def create_afni_json(unique_table: pl.DataFrame, out_dir: PathT) -> dict[str, str]:
+def create_afni_json(
+    unique_table: pl.DataFrame, out_dir: PathT
+) -> dict[str, str]:
     """Query a unique table (e.g. sub, ses, run, etc.) for specific files."""
 
     def _create_ss_review_dset(repetitions: int, out_dir: PathT) -> str:
@@ -103,8 +113,12 @@ def create_afni_json(unique_table: pl.DataFrame, out_dir: PathT) -> dict[str, st
                 extension=".nii.gz",
             )
         ),
-        "ss_review_dset": _create_ss_review_dset(repetitions=1, out_dir=out_dir),
-        "subj": f"sub-{subject}" if not subject.startswith("sub") else {subject},
+        "ss_review_dset": _create_ss_review_dset(
+            repetitions=1, out_dir=out_dir
+        ),
+        "subj": (
+            f"sub-{subject}" if not subject.startswith("sub") else {subject}
+        ),
         "mask_dset": _get_fpath(
             table=subject_query(
                 query="datatype = 'func' AND task = 'balloonanalogrisktask' AND desc = 'brain' AND suffix = 'mask' AND ext = '.nii.gz'"
@@ -120,4 +134,40 @@ def create_afni_json(unique_table: pl.DataFrame, out_dir: PathT) -> dict[str, st
     return afni_json
 
 
+def create_figures(df: pl.DataFrame, dst: Path):
+    with tempfile.TemporaryDirectory() as tmpd:
+        with tempfile.NamedTemporaryFile(suffix=".json", dir=tmpd) as uvars_f:
+            uvars_path = Path(uvars_f.name)
+            uvars = create_afni_json(df, Path(tmpd))
+            uvars_path.write_text(json.dumps(uvars))
+            with tempfile.TemporaryDirectory() as sub_dir:
+                afni.apqc_make_tcsh_py(
+                    uvar_json=uvars_path,
+                    review_style="pythonic",
+                    subj_dir=sub_dir,
+                )
+                for jpg in Path(sub_dir).rglob("*jpg"):
+                    jpg.rename(dst / jpg.name)
+
+
+def main(
+    bids_dir: PathT,
+    out_dir: Path,
+    participant_label: str | list[str] | None = None,
+) -> None:
+    df = load_dataset(bids_dir, subjects=participant_label)
+    create_figures(df, dst=out_dir)
+
+
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("bids_dir", type=Path)
+    parser.add_argument("out_dir", type=Path)
+    parser.add_argument("--participant-label", nargs="+")
+
+    args = parser.parse_args()
+    main(
+        args.bids_dir,
+        out_dir=args.out_dir,
+        participant_label=args.participant_label,
+    )
