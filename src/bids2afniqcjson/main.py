@@ -84,7 +84,7 @@ def _get_fpath(table: pl.DataFrame) -> str:
 
 
 def create_afni_json(
-    unique_table: pl.DataFrame, out_dir: PathT
+    table: pl.DataFrame, subject: str, out_dir: PathT
 ) -> models.UVARS:
     """Query a unique table (e.g. sub, ses, run, etc.) for specific files."""
 
@@ -94,8 +94,8 @@ def create_afni_json(
         out_fpath.write_text(f"num_TRs_per_run: {repetitions}")
         return str(out_fpath)
 
-    subject_query = partial(_query_dataset, unique_table)
-    subject = unique_table.select("sub")[0].item()
+    subject_table = table.filter(pl.col("sub") == subject)
+    subject_query = partial(_query_dataset, subject_table)
 
     # Create base JSON file
     # NOTE_1: Need to rethink querying to be more flexible (e.g. space, run, etc.)
@@ -141,30 +141,32 @@ def create_afni_json(
     return models.UVARS(**afni_json)
 
 
-def create_figures(df: pl.DataFrame, dst: Path):
+def create_figures(table: pl.DataFrame, dst: Path):
+    if not dst.exists():
+        dst.mkdir(parents=True)
     with tempfile.TemporaryDirectory() as tmpd:
         with tempfile.NamedTemporaryFile(suffix=".json", dir=tmpd) as uvars_f:
             uvars_path = Path(uvars_f.name)
-            uvars = create_afni_json(df, Path(tmpd))
-
-            uvars_path.write_text(uvars.model_dump_json(exclude_none=True))
-            with tempfile.TemporaryDirectory() as sub_dir:
-                afni.apqc_make_tcsh_py(
-                    uvar_json=str(uvars_path),
-                    review_style="pythonic",
-                    subj_dir=sub_dir,
+            for subject in table["sub"].unique().sort().to_list():
+                uvars = create_afni_json(
+                    table=table, subject=subject, out_dir=dst
                 )
-                figures_dir = dst / uvars.figures_dir
-                if not figures_dir.exists():
-                    figures_dir.mkdir(parents=True)
-                for jpg in Path(sub_dir).rglob("*jpg"):
-                    jpg.rename(figures_dir / jpg.name)
+                uvars_path.write_text(uvars.model_dump_json(exclude_none=True))
+                with tempfile.TemporaryDirectory() as sub_dir:
+                    afni.apqc_make_tcsh_py(
+                        uvar_json=str(uvars_path),
+                        review_style="pythonic",
+                        subj_dir=sub_dir,
+                    )
+                    figures_dir = dst / uvars.figures_dir
+                    if not figures_dir.exists():
+                        figures_dir.mkdir(parents=True)
+                    for jpg in Path(sub_dir).rglob("*jpg"):
+                        jpg.rename(figures_dir / jpg.name)
 
 
 def _main(
-    bids_dir: PathT,
-    out_dir: Path,
-    include: str | list[str] | None = None,
+    bids_dir: PathT, out_dir: Path, include: str | list[str] | None = None
 ) -> None:
     table = load_dataset(ds_path=bids_dir, subjects=include)
     create_figures(table, dst=out_dir)
@@ -179,10 +181,10 @@ def main() -> None:
         description="Convert bids dataset for json for AFNI qc",
     )
     parser.add_argument(
-        "bids_dir", action="store", type=str, help="Path to BIDS dataset."
+        "bids_dir", action="store", type=Path, help="Path to BIDS dataset."
     )
     parser.add_argument(
-        "out_dir", action="store", type=str, help="Path to BIDS dataset."
+        "out_dir", action="store", type=Path, help="Path to BIDS dataset."
     )
     parser.add_argument(
         "--include",
